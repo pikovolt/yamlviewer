@@ -20,6 +20,8 @@ class Ui_MainWindow(object):
         MainWindow.resize(800, 600)
         self.action_Open = QAction(MainWindow)
         self.action_Open.setObjectName(u"action_Open")
+        self.action_Save = QAction(MainWindow)
+        self.action_Save.setObjectName(u"action_Save")
         self.actionE_xit = QAction(MainWindow)
         self.actionE_xit.setObjectName(u"actionE_xit")
         self.action_Reload = QAction(MainWindow)
@@ -48,6 +50,7 @@ class Ui_MainWindow(object):
 
         self.menubar.addAction(self.menu_File.menuAction())
         self.menu_File.addAction(self.action_Open)
+        self.menu_File.addAction(self.action_Save)
         self.menu_File.addAction(self.action_Reload)
         self.menu_File.addAction(self.actionE_xit)
 
@@ -60,6 +63,7 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"yamlviewer", None))
         self.action_Open.setText(QCoreApplication.translate("MainWindow", u"&Open", None))
+        self.action_Save.setText(QCoreApplication.translate("MainWindow", u"&Save", None))
         self.actionE_xit.setText(QCoreApplication.translate("MainWindow", u"E&xit", None))
         self.action_Reload.setText(QCoreApplication.translate("MainWindow", u"&Reload (F5)", None))
         ___qtreewidgetitem = self.yaml.headerItem()

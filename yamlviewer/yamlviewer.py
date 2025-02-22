@@ -28,14 +28,14 @@
 # trees that have circular dependencies.
 
 # Usage:
-#   python yamlviewer.py [yamlfile]
+#   python -m yamlviewer [yamlfile]
 
 #
 # Pressing <F5> reloads the currently displayed file.
 #
 
 
-from PySide2 import QtCore, QtGui, QtUiTools, QtWidgets
+from PySide2 import QtCore, QtGui, QtWidgets
 from .ui import Ui_MainWindow
 import os
 import sys
@@ -46,12 +46,15 @@ def debug(msg):
         print("DEBUG %s" % msg)
 
 class YamlViewer(QtCore.QObject):
+
     def __init__(self, view, controller, configuration, filename=None):
         super(YamlViewer, self).__init__()
         self._view = view
         self._controller = controller
         self._configuration = configuration
+        self._fname = None
         view.action_Open.triggered.connect(self.file_open)
+        view.action_Save.triggered.connect(self.file_save)
         view.action_Reload.triggered.connect(self.re_load)
         view.action_Reload.setShortcut(QtGui.QKeySequence("F5"))
         self._root = view.yaml.invisibleRootItem()
@@ -60,18 +63,38 @@ class YamlViewer(QtCore.QObject):
         view.yaml.itemExpanded.connect(self.expanded)
         if filename:
             self.load(filename)
+
     def file_open(self):
-        fname = str(QtGui.QFileDialog.getOpenFileName(
+        results = QtWidgets.QFileDialog.getOpenFileName(
                     self._controller,
                     'Open file',
                     self._configuration["directory"]
-                ))
+                )
+        fname = results[0]
         debug("fname=%s." % fname)
         self._configuration["directory"] = os.path.dirname(fname)
         self.load(fname)
+
+    def file_save(self):
+        results = QtWidgets.QFileDialog.getSaveFileName(
+                    self._controller,
+                    'Save file',
+                    self._configuration["directory"]
+                )
+        fname = results[0]
+        debug("fname=%s." % fname)
+        self._configuration["directory"] = os.path.dirname(fname)
+        self.save(fname)
+
     def re_load(self):
         if self._fname:
             self.load(self._fname)
+
+    def expand_all_items(self, item):
+        item.setExpanded(True)
+        for i in range(item.childCount()):
+            self.expand_all_items(item.child(i))
+
     def populate(self, content, item, ch):
         item.removeChild(ch)
         self._item_map[item] = self.good
@@ -79,6 +102,7 @@ class YamlViewer(QtCore.QObject):
             debug("type(v)=%s." % (type(v),))
             if type(v) == dict:
                 x = QtWidgets.QTreeWidgetItem([k,])
+                x.setFlags(x.flags() | QtCore.Qt.ItemIsEditable)  # Make item editable
                 z = QtWidgets.QTreeWidgetItem(["marker"])
                 self._item_map[x] = lambda item, x=x, v=v: self.populate(v, x, z)
                 x.addChild(z)
@@ -86,6 +110,7 @@ class YamlViewer(QtCore.QObject):
                 return
             if type(v) == list:
                 x = QtWidgets.QTreeWidgetItem([k, "(list with %u item%s)" % (len(v), "" if len(v)==1 else "s")])
+                x.setFlags(x.flags() | QtCore.Qt.ItemIsEditable)  # Make item editable
                 z = QtWidgets.QTreeWidgetItem(["marker"])
                 self._item_map[x] = lambda item, x=x, v=v: self.populate(v, x, z)
                 x.addChild(z)
@@ -93,6 +118,7 @@ class YamlViewer(QtCore.QObject):
                 return
             debug("type(k)=%s, type(v)=%s." % (type(k), type(v)))
             x = QtWidgets.QTreeWidgetItem([k, "%s" % v])
+            x.setFlags(x.flags() | QtCore.Qt.ItemIsEditable)  # Make item editable
             self._item_map[x] = self.good
             item.addChild(x)
         if type(content) == dict:
@@ -103,6 +129,7 @@ class YamlViewer(QtCore.QObject):
             for n, datum in enumerate(content):
                 add("%u" % n, datum)
             return
+
     def load(self, fname):
         with open(fname, "rt") as f:
             s = f.read()
@@ -110,12 +137,43 @@ class YamlViewer(QtCore.QObject):
         self._root.takeChildren()
         self.populate(self._content, self._root, self._marker)
         self._fname = fname
+        self.expand_all_items(self._root)
+
     def good(self, item):
         pass
+
     def expanded(self, item):
         debug("expanded, item=%s, map=%s" % (item, self._item_map.get(item, "N/A")))
         h = self._item_map[item]
         h(item)
+
+    def save(self, filename):
+        with open(filename, "wt") as f:
+            f.write(tree_to_yaml(self._root))
+
+def tree_to_yaml(item):
+
+    def item_to_dict(item):
+        if item.childCount() == 0:
+            return item.text(1)
+        result = {}
+        for i in range(item.childCount()):
+            child = item.child(i)
+            key = child.text(0)
+            value = item_to_dict(child)
+            result[key] = value
+        return result
+
+    # root is a dictionary
+    root_dict = {}
+    for i in range(item.childCount()):
+        child = item.child(i)
+        key = child.text(0)
+        value = item_to_dict(child)
+        root_dict[key] = value
+
+    return yaml.dump(root_dict, default_flow_style=False)
+
 
 # MapLoader makes all object/python instances into maps.
 class MapLoader(yaml.SafeLoader):
@@ -126,12 +184,13 @@ MapLoader.add_multi_constructor(
         "tag:yaml.org,2002:python/object",
         MapLoader.construct_x)
 
+
 def main():
     configuration = {
         "directory": os.path.expanduser("~"),
     }
     try:
-        with open(os.path.expanduser("~/.yamlviewer.yaml"), "rt") as f:
+        with open(os.path.expanduser("yamlviewer.yaml"), "rt") as f:
             s = f.read()
             c = yaml.load(s, Loader=yaml.SafeLoader)
             configuration.update(c)
@@ -151,8 +210,5 @@ def main():
         sys.exit(app.exec_())
     finally:
         s = yaml.dump(configuration)
-        with open(os.path.expanduser("~/.yamlviewer.yaml"), "wt") as f:
+        with open(os.path.expanduser("yamlviewer.yaml"), "wt") as f:
             f.write(s)
-
-main()
-
